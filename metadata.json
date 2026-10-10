@@ -1,0 +1,6 @@
+{
+  "name": "UltraWide Pro Camera",
+  "description": "Professional ultra-wide camera with 0.5x to 10x smooth zoom, RAW capture, manual focus, EV control, live filters, video recording, and organized gallery studio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
