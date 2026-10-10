@@ -152,6 +152,47 @@ object PhotoEditorProcessor {
         outputBitmap
     }
 
+    fun applyUltraWideOpticalField(source: Bitmap): Bitmap {
+        val w = source.width
+        val h = source.height
+        val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+
+        val meshW = 16
+        val meshH = 16
+        val count = (meshW + 1) * (meshH + 1)
+        val verts = FloatArray(count * 2)
+
+        val cx = w / 2f
+        val cy = h / 2f
+
+        var index = 0
+        for (y in 0..meshH) {
+            val fy = y.toFloat() / meshH * h
+            for (x in 0..meshW) {
+                val fx = x.toFloat() / meshW * w
+
+                val dx = (fx - cx) / cx
+                val dy = (fy - cy) / cy
+                val r = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+
+                // Wide-angle optical lens distortion factor
+                val factor = 1f + 0.12f * (r * r)
+
+                val newX = cx + dx * cx * factor
+                val newY = cy + dy * cy * factor
+
+                verts[index * 2] = newX.coerceIn(0f, w.toFloat())
+                verts[index * 2 + 1] = newY.coerceIn(0f, h.toFloat())
+                index++
+            }
+        }
+
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        canvas.drawBitmapMesh(source, meshW, meshH, verts, 0, null, 0, paint)
+        return output
+    }
+
     private fun applyFilterMatrix(matrix: ColorMatrix, filter: CameraFilter) {
         when (filter) {
             CameraFilter.NORMAL -> {

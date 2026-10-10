@@ -319,10 +319,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     private fun processAndSaveCapturedImage(image: ImageProxy) {
         viewModelScope.launch {
             try {
-                val buffer = image.planes[0].buffer
-                val bytes = ByteArray(buffer.remaining())
-                buffer.get(bytes)
-                val originalBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                // Decode with true-color RGB matrix from ImageProxy using CameraX's toBitmap()
+                val originalBitmap = image.toBitmap()
 
                 // Handle rotation
                 val rotationDegrees = image.imageInfo.rotationDegrees
@@ -332,19 +330,26 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 } else {
                     originalBitmap
                 }
-                image.close()
 
                 val currentState = _uiState.value
                 val filter = currentState.selectedFilter
 
                 // Apply live filter if one is selected
-                val finalBitmap = if (filter != CameraFilter.NORMAL) {
+                val filteredBitmap = if (filter != CameraFilter.NORMAL) {
                     PhotoEditorProcessor.processImage(
                         rotatedBitmap,
                         EditAdjustments(selectedFilter = filter)
                     )
                 } else {
                     rotatedBitmap
+                }
+
+                // If 0.5x Ultra-Wide is active and hardware is using standard camera,
+                // expand the field of view with optical wide-angle barrel mapping!
+                val finalBitmap = if (currentState.currentZoom <= 0.65f && currentState.hardwareInfo?.hasPhysicalUltraWide != true) {
+                    PhotoEditorProcessor.applyUltraWideOpticalField(filteredBitmap)
+                } else {
+                    filteredBitmap
                 }
 
                 val savedItem = storageManager.savePhoto(
@@ -364,7 +369,13 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             } catch (e: Exception) {
                 Log.e("CameraViewModel", "Error saving photo", e)
                 _uiState.update { it.copy(isCapturing = false) }
-                showToast("Error processing captured photo")
+                showToast("Error processing captured photo: ${e.message}")
+            } finally {
+                try {
+                    image.close()
+                } catch (e: Exception) {
+                    // Ignore
+                }
             }
         }
     }

@@ -37,14 +37,27 @@ object CameraHardwareHelper {
         var supportsRaw = false
         val physicalIds = mutableListOf<String>()
 
+        var lowestFocalLength = 999f
+        var lowestFocalId: String? = null
+        var defaultBackFocalLength = 4.5f
+
         try {
             for (id in cameraManager.cameraIdList) {
                 val chars = cameraManager.getCameraCharacteristics(id)
                 val facing = chars.get(CameraCharacteristics.LENS_FACING)
 
                 if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+                    val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                    val minFocal = focalLengths?.minOrNull() ?: 4.0f
+
                     if (defaultBackId == null) {
                         defaultBackId = id
+                        defaultBackFocalLength = minFocal
+                    }
+
+                    if (minFocal < lowestFocalLength) {
+                        lowestFocalLength = minFocal
+                        lowestFocalId = id
                     }
 
                     // Check zoom ratio range on Android 11+ (API 30+)
@@ -57,22 +70,17 @@ object CameraHardwareHelper {
                             if (zoomRange.upper > maxZoom) {
                                 maxZoom = zoomRange.upper
                             }
-                            if (zoomRange.lower <= 0.65f) {
+                            if (zoomRange.lower <= 0.75f) {
                                 hasUltraWide = true
                                 ultraWideId = id
                             }
                         }
                     }
 
-                    // Check focal lengths
-                    val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
-                    if (focalLengths != null && focalLengths.isNotEmpty()) {
-                        val minFocal = focalLengths.minOrNull() ?: 4.0f
-                        // Ultra-wide lenses typically have focal lengths <= 2.8mm
-                        if (minFocal <= 2.8f) {
-                            hasUltraWide = true
-                            ultraWideId = id
-                        }
+                    // Ultra-wide lenses typically have focal lengths <= 3.2mm
+                    if (minFocal <= 3.2f) {
+                        hasUltraWide = true
+                        ultraWideId = id
                     }
 
                     // Check physical cameras if multi-camera
@@ -81,7 +89,6 @@ object CameraHardwareHelper {
                         if (physicalCamIds.isNotEmpty()) {
                             physicalIds.addAll(physicalCamIds)
                             if (physicalCamIds.size > 1) {
-                                // Multi-camera logical device (standard + ultrawide)
                                 hasUltraWide = true
                             }
                         }
@@ -109,6 +116,11 @@ object CameraHardwareHelper {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to query camera hardware characteristics", e)
+        }
+
+        if (ultraWideId == null && lowestFocalId != null && lowestFocalId != defaultBackId && lowestFocalLength < defaultBackFocalLength) {
+            ultraWideId = lowestFocalId
+            hasUltraWide = true
         }
 
         // Even if hardware reports minZoom = 1.0f, our app provides 0.5x Ultra-Wide framing simulation

@@ -118,8 +118,9 @@ fun CameraScreen(
         }
     }
 
-    // Bind CameraX dynamically according to camera facing and mode
-    DisposableEffect(uiState.isFrontCamera, uiState.mode, lifecycleOwner) {
+    // Bind CameraX dynamically according to camera facing, mode, and ultra-wide lens
+    val isUltraWideMode = uiState.currentZoom <= 0.65f
+    DisposableEffect(uiState.isFrontCamera, uiState.mode, isUltraWideMode, lifecycleOwner) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         val mainExecutor = ContextCompat.getMainExecutor(context)
 
@@ -135,10 +136,27 @@ fun CameraScreen(
                 .build()
             imageCapture = imgCapture
 
-            val cameraSelector = if (uiState.isFrontCamera) {
-                CameraSelector.DEFAULT_FRONT_CAMERA
-            } else {
-                CameraSelector.DEFAULT_BACK_CAMERA
+            val hw = uiState.hardwareInfo
+            val isUltraWideTarget = isUltraWideMode && !uiState.isFrontCamera
+            val ultraWideId = hw?.ultraWideCameraId
+
+            val cameraSelector = when {
+                uiState.isFrontCamera -> CameraSelector.DEFAULT_FRONT_CAMERA
+                isUltraWideTarget && ultraWideId != null -> {
+                    CameraSelector.Builder()
+                        .addCameraFilter { cameraInfos ->
+                            val filtered = cameraInfos.filter { camInfo ->
+                                try {
+                                    androidx.camera.camera2.interop.Camera2CameraInfo.from(camInfo).cameraId == ultraWideId
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            }
+                            if (filtered.isNotEmpty()) filtered else cameraInfos
+                        }
+                        .build()
+                }
+                else -> CameraSelector.DEFAULT_BACK_CAMERA
             }
 
             try {
