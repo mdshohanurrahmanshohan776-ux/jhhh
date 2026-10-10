@@ -4,7 +4,11 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.os.Build
+import android.hardware.camera2.CaptureRequest
 import android.util.Log
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraControl
 import androidx.camera.core.CameraInfo
@@ -144,18 +148,40 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         val minR = zoomState.minZoomRatio
         val maxR = zoomState.maxZoomRatio
 
-        // If camera hardware natively supports 0.5x, pass ratio directly clamped to [minR, maxR]
-        // Otherwise, if minR is 1.0f, map ratio smoothly to [minR, maxR]
-        val targetRatio = if (ratio < minR) {
-            minR
-        } else {
+        val targetRatio = if (minR <= 0.75f) {
+            // Hardware camera natively supports ultra-wide zoom ratio <= 0.75x
             ratio.coerceIn(minR, maxR)
+        } else {
+            // Standard sensor where minR is 1.0f:
+            // Map 0.5x to minR (1.0f: fullest optical sensor view),
+            // and 1.0x to 2.0f, so 0.5x is visually 2x wider than 1x!
+            when {
+                ratio <= 0.65f -> minR
+                ratio <= 1.05f -> (minR * 2.0f).coerceAtMost(maxR)
+                else -> {
+                    val normalized = (ratio - 1.0f) / 9.0f
+                    val base = (minR * 2.0f).coerceAtMost(maxR)
+                    (base + normalized * (maxR - base)).coerceIn(minR, maxR)
+                }
+            }
         }
 
         try {
             camera.cameraControl.setZoomRatio(targetRatio)
         } catch (e: Exception) {
-            Log.e("CameraViewModel", "Failed to set zoom ratio", e)
+            Log.e("CameraViewModel", "Failed to set zoom ratio: $targetRatio", e)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val c2Control = Camera2CameraControl.from(camera.cameraControl)
+                val options = CaptureRequestOptions.Builder()
+                    .setCaptureRequestOption(CaptureRequest.CONTROL_ZOOM_RATIO, targetRatio)
+                    .build()
+                c2Control.setCaptureRequestOptions(options)
+            } catch (e: Exception) {
+                // Ignore if unsupported by HAL
+            }
         }
     }
 

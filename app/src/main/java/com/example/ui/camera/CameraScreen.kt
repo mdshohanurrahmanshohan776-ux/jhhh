@@ -159,12 +159,10 @@ fun CameraScreen(
                 else -> CameraSelector.DEFAULT_BACK_CAMERA
             }
 
-            try {
-                cameraProvider.unbindAll()
-
+            fun bindWithSelector(selector: CameraSelector) {
                 if (uiState.mode == CameraMode.VIDEO) {
                     try {
-                        val cameraInfo = cameraProvider.getCameraInfo(cameraSelector)
+                        val cameraInfo = cameraProvider.getCameraInfo(selector)
                         val videoCaps = Recorder.getVideoCapabilities(cameraInfo)
                         val supportedQualities = videoCaps.getSupportedQualities(DynamicRange.SDR)
 
@@ -181,18 +179,17 @@ fun CameraScreen(
 
                             val camera = cameraProvider.bindToLifecycle(
                                 lifecycleOwner,
-                                cameraSelector,
+                                selector,
                                 preview,
                                 vidCapture
                             )
                             viewModel.bindCamera(camera)
                         } else {
                             // Camera hardware has no supported video encoder profiles
-                            Log.w("CameraScreen", "No supported encoder profiles on camera, falling back to ImageCapture")
                             videoCapture = null
                             val camera = cameraProvider.bindToLifecycle(
                                 lifecycleOwner,
-                                cameraSelector,
+                                selector,
                                 preview,
                                 imgCapture
                             )
@@ -203,7 +200,7 @@ fun CameraScreen(
                         videoCapture = null
                         val camera = cameraProvider.bindToLifecycle(
                             lifecycleOwner,
-                            cameraSelector,
+                            selector,
                             preview,
                             imgCapture
                         )
@@ -214,14 +211,25 @@ fun CameraScreen(
                     videoCapture = null
                     val camera = cameraProvider.bindToLifecycle(
                         lifecycleOwner,
-                        cameraSelector,
+                        selector,
                         preview,
                         imgCapture
                     )
                     viewModel.bindCamera(camera)
                 }
+            }
+
+            try {
+                cameraProvider.unbindAll()
+                bindWithSelector(cameraSelector)
             } catch (exc: Exception) {
-                Log.e("CameraScreen", "Use case binding failed", exc)
+                Log.w("CameraScreen", "Binding failed with custom selector, falling back to DEFAULT_BACK_CAMERA", exc)
+                try {
+                    cameraProvider.unbindAll()
+                    bindWithSelector(CameraSelector.DEFAULT_BACK_CAMERA)
+                } catch (fallbackExc: Exception) {
+                    Log.e("CameraScreen", "Fallback binding also failed", fallbackExc)
+                }
             }
         }, mainExecutor)
 

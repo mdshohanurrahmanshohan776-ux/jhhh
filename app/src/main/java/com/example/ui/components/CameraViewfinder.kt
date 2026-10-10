@@ -81,19 +81,10 @@ fun CameraViewfinder(
         val containerWidth = constraints.maxWidth.toFloat()
         val containerHeight = constraints.maxHeight.toFloat()
 
-        val targetScale = if (zoomRatio <= 0.65f) 0.90f else 1.0f
-        val animatedScale by animateFloatAsState(
-            targetValue = targetScale,
-            animationSpec = tween(durationMillis = 250),
-            label = "preview_scale"
-        )
-
         // 1. CameraX PreviewView
         AndroidView(
             factory = { previewView },
-            modifier = Modifier
-                .fillMaxSize()
-                .scale(animatedScale)
+            modifier = Modifier.fillMaxSize()
         )
 
         // 2. Live Filter preview tint overlay
